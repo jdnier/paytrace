@@ -1,0 +1,17 @@
+TODO:
+
+* Incorporate recent API updates described here: http://help.paytrace.com/review-recent-changes-updates-to-the-api.
+
+* Explain setting ENABLEPARTIALAUTH='N' to disable partial approvals.
+
+
+Questions for PayTrace:
+
+* Is it ok to assume that responses are UTF-8 encoded (or compatible ISO-8859-1)?
+
+* The latest API PDF is dated July 2011. Is there a later version somewhere?
+
+* Is there a diff-able source for the PDF (maybe HTML)?
+
+* Will the PDF API doc be updated with the recent updates?
+
