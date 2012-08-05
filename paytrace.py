@@ -22,60 +22,72 @@ import requests
 POST_URL = 'https://paytrace.com/api/default.pay'
 
 
-def parse_response(response_bytes):
+def parse_response(s):
     """
     Parse a PayTrace response string into a dictionary.
 
     See section 5.1.
 
     """
-    str_content = response_bytes.decode('utf-8')
-    if not str_content.endswith('|'):
-        raise Exception('Unexpected response: %r' % str_content)
+    if not s.endswith('|'):
+        raise Exception('Unexpected response: %r' % s[:100])
+
     try:
-        response = dict(s.split('~') for s in str_content[:-1].split('|'))
+        api_response_dict = dict(s.split('~') for s in s[:-1].split('|'))
     except:
-        raise Exception('Malformed response: %r' % str_content)
+        raise Exception('Malformed response: %r' % s)
 
-    return response
+    return api_response_dict
 
 
-def send_api_request(request, post_url=POST_URL):
+def send_api_request(api_request, post_url=POST_URL):
     """
-    Send a PayTrace API request string and get a response.
+    Send a PayTrace API request and get a response.
 
-      request -- a subclass of PayTraceRequest
+      api_request -- a subclass of PayTraceRequest
 
     See section 3.2.
+
+    Variable naming gets a little confusing here because both requests
+    and PayTrace have a notion of "requests" and "responses". For clarity,
+    you'll see
+
+        requests.post     (an HTTP request)
+        requests.response (an HTTP response object)
+        api_request       (a subclass of PayTraceResponse)
+        api_response_dict (a PayTrace response string parsed into a dictionary)
+
+    TEMPORARY:
+
+    Here are the responses.response object's attributes and methods:
+        response.config
+        response.content --> bytes
+        response.cookies
+        response.encoding
+        response.error
+        response.headers
+        response.history
+        response.iter_content(
+        response.iter_lines(
+        response.json
+        response.ok
+        response.raise_for_status(
+        response.raw     --> requests.packages.urllib3.response.HTTPResponse
+        response.reason
+        response.request
+        response.status_code
+        response.text    --> Unicode
+        response.url
 
     """
     utc_timestamp = '%s+00:00' % datetime.utcnow()
     try:
         response = requests.post(
             post_url,
-            data=str(request),
-            auth=('user', 'pass'),
+            data=str(api_request),
             headers={'Content-Type': 'application/x-www-form-urlencoded'},
             timeout=60,
         )
-        # response.config
-        # response.content
-        # response.cookies
-        # response.encoding
-        # response.error
-        # response.headers
-        # response.history
-        # response.iter_content(
-        # response.iter_lines(
-        # response.json
-        # response.ok
-        # response.raise_for_status(
-        # response.raw
-        # response.reason
-        # response.request
-        # response.status_code
-        # response.text
-        # response.url
     except KeyboardInterrupt:
         raise
     except:
@@ -83,27 +95,30 @@ def send_api_request(request, post_url=POST_URL):
         raise Exception(
             'Error sending HTTP POST.',
             {'exc_instance': exc_instance,
-             'request': repr(request),
-             'request_raw': str(request),
+             'api_request': repr(api_request),
+             'api_request_raw': str(api_request),
              'utc_timestamp': utc_timestamp}
         )
 
     try:
-        response = parse_response(content)
+        api_response_dict = parse_response(response.text)
     except KeyboardInterrupt:
         raise
     except:
+        with open('/tmp/unexpected_api_response.html', 'wb') as fout:
+            fout.write(response.content)
+            print('Wrote response to %r.' % fout.name)
         exc_class, exc_instance = sys.exc_info()[:2]
         raise Exception(
             'Error parsing HTTP response.',
             {'exc_instance': exc_instance,
-             'request': repr(request),
-             'request_raw': str(request),
-             'response_raw': content,
+             'api_request': repr(api_request),
+             'api_request_raw': str(api_request),
+             'api_response': response.text[:100],
              'utc_timestamp': utc_timestamp}
         )
 
-    return response
+    return api_response_dict
 
 
 def uppercase_keys(d):
@@ -181,7 +196,7 @@ class PayTraceRequest(metaclass=MetaRepr):
 
     _required = NotImplemented
     _optional = NotImplemented
-    _discretionary_data_allowed = False
+    _discretionary_data_allowed = NotImplemented
     _test_mode = False
 
     def __init__(self, **kwargs):
@@ -220,31 +235,13 @@ class PayTraceRequest(metaclass=MetaRepr):
             '{name}._required and {name}._optional must not overlap'
             .format(**locals())
         )
-        # Missing fields check.
-        missing = ', '.join(required - fields)
-        if missing:
-            raise KeyError(
-                '{name} has missing fields: {missing}'.format(**locals())
-            )
-        # Extra fields check.
-        extra = ', '.join(sorted(fields - required - optional))
-        if extra:
-            if self._discretionary_data_allowed:
-                # Extra fields found but discretionary data is allowed.
-                sys.stderr.write(
-                    'Note: Extra fields found (ok if discretionary data): %s\n'
-                    % extra
-                )
-            else:
-                raise KeyError(
-                    '{name} defines extra fields: {extra}'.format(**locals())
-                )
         # If conditional fields are defined, add at least one set to required.
         self._required = self._required[:]
         if hasattr(self, '_conditional'):
             for field, field_list in self._conditional.items():
                 if field in kwargs:
                     self._required += field_list
+                    required.update(field_list)
                     break
             else:
                 field_sets = '\n'.join(
@@ -255,6 +252,25 @@ class PayTraceRequest(metaclass=MetaRepr):
                     'One of the following sets of fields is required:\n'
                     '{field_sets}'
                     .format(field_sets=field_sets)
+                )
+        # Missing fields check.
+        missing = ', '.join(required - fields)
+        if missing:
+            raise KeyError(
+                '{name} has missing fields: {missing}'.format(**locals())
+            )
+        # Extra fields check.
+        extra = ', '.join(sorted(fields - required - optional))
+        if extra:
+            if self._discretionary_data_allowed is True:
+                # Extra fields found but discretionary data is allowed.
+                sys.stderr.write(
+                    'Note: Extra fields found (ok if discretionary data): %s\n'
+                    % extra
+                )
+            else:
+                raise KeyError(
+                    '{name} defines extra fields: {extra}'.format(**locals())
                 )
 
     @classmethod
@@ -269,14 +285,16 @@ class PayTraceRequest(metaclass=MetaRepr):
 
         def format_fields(field_list):
             s = ', '.join(
-                '{field}={value!r}'.format(**locals())
+                '{field}={value!r}'.format(field=field.lower(), value=value)
                 for field, value in field_items(field_list)
                 if not value  # show only fields without default values
             )
             return s + ',' if s else '# <none>'
 
-        textwrapper = TextWrapper(subsequent_indent=' ' * 4,
-            initial_indent=' ' * 4)
+        textwrapper = TextWrapper(
+            initial_indent=' ' * 4,
+            subsequent_indent=' ' * 4,
+        )
         l = []
         l.append('\n{cls.__name__}('.format(cls=cls))
         l.append('    # Required fields')
@@ -285,10 +303,10 @@ class PayTraceRequest(metaclass=MetaRepr):
             for label, fields in cls._conditional.items():
                 l.append('\n    # Required if using ' + label)
                 l.append(textwrapper.fill(format_fields(fields)))
-        if hasattr(cls, '_discretionary_data_allowed'):
+        if cls._discretionary_data_allowed is True:
             l.append(
                 '\n    '
-                '# Customer-defined discrtionary data may also be included.'
+                '# Customer-defined discretionary data may also be included.'
             )
         l.append('\n    # Optional fields')
         l.append(textwrapper.fill(format_fields(cls._optional)))
@@ -652,12 +670,12 @@ class ExportTransaction(PayTraceRequest):
     transaction request to our gateway if you happen to receive this response.
     This essentially would be a "query" to our gateway that would check to
     see if the transaction had really processed if you receive a
-    "service unavailable" response. This call to our API is outlined here -
+    "service unavailable" response. This call to our API is outlined here --
     http://help.paytrace.com/api-export-transaction-information.
     You can use the "searchtext" parameter in your request to narrow down which
     transaction you are looking for to see if it truly had been processed. If
     it was processed, it will return the details of your transaction to parse
-    through and store – and then you can move on to your next transaction. If
+    through and store -- and then you can move on to your next transaction. If
     the transaction has not processed, no results will be returned letting you
     know if the transaction truly did not process."
 
@@ -724,47 +742,114 @@ class SettleTranxRequest(PayTraceRequest):
 
 
 def _test():
-    # An example of Authorization and Void for CC validation.
+    """
+    Send Authorization and Void requests to the PayTrace demo account using
+    the demo credit card shown in the PayTrace API docs.
 
+    """
+    import time
+
+    print("""
+                    === API usage example ===
+
+    >>> # 1. Set credentials for the PayTrace demo account.
+    >>> set_credentials('demo123', 'demo123')
+    """)
+    time.sleep(2)
+
+    print("""
+    >>> # 2. Sending Authorization request to PayTrace demo account...
+    >>> authorization = Authorization(
+    ...     amount='1.00',
+    ...     cc='4012881888818888',
+    ...     expmnth='01',
+    ...     expyr='15',
+    ...     csc='999',
+    ...     baddress='123 Main St.',
+    ...     bzip='53719',
+    ...     invoice='8888',
+    ... )
+    >>> response = send_api_request(authorization)""")
     authorization = Authorization(
-        AMOUNT='1.00',
-        CC='4012881888818888',
-        EXPMNTH='12',
-        EXPYR='11',
-        CSC='999',
-        BADDRESS='1234',
-        BZIP='83852',
-        INVOICE='8888',
+        amount='1.00',
+        cc='4012881888818888',
+        expmnth='01',
+        expyr='15',
+        csc='999',
+        baddress='123 Main St.',
+        bzip='53719',
+        invoice='8888',
     )
+    response = send_api_request(authorization)
 
-    print('authorization request:')
-    print('  str:', str(authorization))
-    print('  repr:', repr(authorization))
-    print('auth_request._required', authorization._required)
-    print('auth_request._optional', authorization._optional)
-    print('auth_request._fields', authorization._fields)
-    print()
+    print("""\
+    >>> response
+    {response}
+    """.format(**locals()))
 
-    response = send_api_request(auth_request)
-    print('auth response:')
-    print(response)
-    print()
+    print("""\
+    >>> # 3. Grab the transaction ID from the response.
+    >>> transactionid = response['TRANSACTIONID']
+    """)
+
+    time.sleep(2)
+    print("""\
+    >>> # 4. Sending Void request to cancel authorization...
+    >>> void = Void(
+            tranxid=transactionid
+        )
+    >>> response = send_api_request(void)""")
     transactionid = response['TRANSACTIONID']
-
-    void = Void(TranxID=transactionid)
-    print('void request:')
-    print('  str:', str(void))
-    print('  repr:', repr(void))
-    print()
+    void = Void(tranxid=transactionid)
     response = send_api_request(void)
-    print('void response:')
-    print(response)
+    print("""\
+    >>> response
+    {response}
 
+                  === end API usage example ===
+
+    """.format(**locals()))
+
+    input('Type <enter> to continue...')
+    print("""
+
+    # NOTE: To explore more of the API, run dir() to see what's in the current
+    # namespace. To see the required and optional fields for a particular
+    # request class, print it's repr. For example,
+
+    >>> Sale  # Note: if using ipython, you'll need to use repr(Sale) instead
+    Sale(
+        # Required fields
+        amount='',
+
+        # Required if using CC
+        cc='', expmnth='', expyr='',
+
+        # Required if using SWIPE
+        swipe='',
+
+        # Required if using CUSTID
+        custid='',
+
+        # Customer-defined discretionary data may also be included.
+
+        # Optional fields
+        bname='', baddress='', baddress2='', bcity='', bstate='', bzip='',
+        bcountry='', sname='', saddress='', saddress2='', scity='',
+        scounty='', sstate='', szip='', scountry='', email='', csc='',
+        invoice='', description='', tax='', custref='', returnclr='',
+        customdba='', enablepartialauth='', test='',
+    )
+    """.format(**locals()))
 
 if __name__ == '__main__':
-    # For interactive interpreter explorations, run 'python3 -i paytrace.py'
-    # or 'ipython3 -i paytrace.py'. By default, Test mode will be enabled and
-    # credentials for the PayTrace demo account will be set.
+    print("""
+    To explore the API, run 'python3 -i paytrace.py', then call the _test()
+    function. By default, credentials for the PayTrace demo account are in
+    effect.
+
+    >>> set_credentials('demo123', 'demo123')
+    >>> # now you call _test()...
+    """)
     set_credentials('demo123', 'demo123')
-    set_test_mode()
 
