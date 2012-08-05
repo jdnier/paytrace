@@ -105,9 +105,6 @@ def send_api_request(api_request, post_url=POST_URL):
     except KeyboardInterrupt:
         raise
     except:
-        with open('/tmp/unexpected_api_response.html', 'wb') as fout:
-            fout.write(response.content)
-            print('Wrote response to %r.' % fout.name)
         exc_class, exc_instance = sys.exc_info()[:2]
         raise Exception(
             'Error parsing HTTP response.',
