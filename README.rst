@@ -23,8 +23,7 @@ The PayTrace API is documented in a single PDF file available here: https://payt
     
         >>> # 1. Set credentials for the PayTrace demo account.
         >>> set_credentials('demo123', 'demo123')
-        
-    
+
         >>> # 2. Sending Authorization request to PayTrace demo account...
         >>> authorization = Authorization(
         ...     amount='1.00',

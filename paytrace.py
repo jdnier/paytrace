@@ -750,8 +750,7 @@ def _test():
                     === API usage example ===
 
     >>> # 1. Set credentials for the PayTrace demo account.
-    >>> set_credentials('demo123', 'demo123')
-    """)
+    >>> set_credentials('demo123', 'demo123')""")
     time.sleep(2)
 
     print("""
