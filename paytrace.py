@@ -741,7 +741,7 @@ class SettleTranxRequest(PayTraceRequest):
 def _test():
     """
     Send Authorization and Void requests to the PayTrace demo account using
-    the demo credit card shown in the PayTrace API docs.
+    the demo credit card from the PayTrace API docs.
 
     """
     import time
