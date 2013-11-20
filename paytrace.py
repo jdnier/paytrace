@@ -811,7 +811,7 @@ def _test():
 
     # NOTE: To explore more of the API, run dir() to see what's in the current
     # namespace. To see the required and optional fields for a particular
-    # request class, print it's repr. For example,
+    # request class, print its repr. For example,
 
     >>> Sale  # Note: if using ipython, you'll need to use repr(Sale) instead
     Sale(
